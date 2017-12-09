@@ -75,7 +75,7 @@ def coordenadas_from_svd():
     return latitude, longitude
 
 
-def relative_comparisons():
+def constraints():
     latitude, longitude = coordenadas_from_svd()
     # cities_length = 3
     cities_length = len(latitude)
@@ -96,10 +96,75 @@ def relative_comparisons():
                 #  Second term (xi - xk) t A WA t (xi - xk)
                 w11_coeficient = pow(R[0], 2) + pow(R[1], 2)
 
-                constraints.append((w00_coeficient, w11_coeficient))
+                constraints.append([w00_coeficient, w11_coeficient])
 
-    print(constraints)
+    return constraints
+
+
+def convex_quadratic():
+    # This method solves the convex quadratic programming problem
+    #
+    # minimize  ( W00^2 + W11^2 )/2
+    #
+    # bounds:
+    #     W00 >= 0
+    #     W11 >= 0
+    #
+    # subject to:
+    # q1:    c1W00^2 - c2W11^2 >= 1
+    #
+
+    p = cplex.Cplex()
+
+    # Create variables
+    p.variables.add(names=["W00", "W11"])
+
+    p.variables.set_lower_bounds([("W00", 0),
+                                  ("W11", 0)])
+
+    # Create constraints
+    problem_constraints = constraints()
+
+    for constraint in problem_constraints:
+        coeficient_w00 = constraint[0]
+        coeficient_w11 = - constraint[1]
+
+        p.quadratic_constraints.add(quad_expr=[["W00", "W11"],
+                                               ["W00", "W11"],
+                                               [coeficient_w00, coeficient_w11]],
+                                    sense='G',
+                                    rhs=1)
+
+    # Create objective function.
+    p.objective.set_quadratic([[["W00", "W11"], [1, 0]],
+                               [["W00", "W11"], [0, 1]]])
+
+    solve_and_display(p)
+
+
+def solve_and_display(p):
+    p.solve()
+
+    # solution.get_status() returns an integer code
+    print("Solution status = ", p.solution.get_status(), ":", end=' ')
+    # the following line prints the corresponding string
+    print(p.solution.status[p.solution.get_status()])
+    print("Solution value  = ", p.solution.get_objective_value())
+
+    numrows = p.linear_constraints.get_num()
+
+    for i in range(numrows):
+        print("Row ", i, ":  ", end=' ')
+        print("Slack = %10f " % p.solution.get_linear_slacks(i), end=' ')
+        print("Pi = %10f" % p.solution.get_dual_values(i))
+
+    numcols = p.variables.get_num()
+
+    for j in range(numcols):
+        print("Column ", j, ":  ", end=' ')
+        print("Value = %10f " % p.solution.get_values(j), end=' ')
+        print("Reduced Cost = %10f" % p.solution.get_reduced_costs(j))
 
 
 if __name__ == "__main__":
-    relative_comparisons()
+    convex_quadratic()
